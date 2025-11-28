@@ -1,13 +1,10 @@
 # Makefile for whereami
 #
 # Provides convenience targets for:
-#  - Local Go build / run / lint
 #  - Flatpak build, install, run, clean
-#  - Local desktop install (binary + .desktop + icon)
 #
 # Requirements (host, outside Flatpak):
 #  - Go toolchain (matching go.mod version)
-#  - qmllint-qt6 (for QML lint target) optional
 #  - flatpak + flatpak-builder for Flatpak targets
 #
 # Flatpak manifest: flatpak/io.github.rubiojr.whereami.yml
