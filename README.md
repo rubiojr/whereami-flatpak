@@ -1,6 +1,6 @@
 # Building whereami as a Flatpak
 
-This directory contains the Flatpak manifest and related files for building `whereami` as a Flatpak application.
+This directory contains the Flatpak manifest and related files for building [whereami](https://github.com/rubiojr/whereami) as a Flatpak application.
 
 ## Quick Start
 
