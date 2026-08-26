@@ -4,7 +4,7 @@ This directory contains the Flatpak manifest and related files for building [whe
 
 ## Quick Start
 
-The easiest way to build and install the Flatpak is using the Makefile targets from the project root:
+The easiest way to build and install the Flatpak is using the Makefile targets:
 
 ```bash
 # Build and install the Flatpak (user installation)
@@ -19,6 +19,45 @@ make flatpak-clean
 # Rebuild from scratch
 make flatpak-rebuild
 ```
+
+## Releasing a Tagged Version
+
+After pushing a `whereami` tag, update this repository with that exact tag:
+
+```bash
+./scripts/release update v0.1.11
+```
+
+The update command:
+
+1. Checks out the tag from `rubiojr/whereami` and resolves its commit.
+2. Regenerates `go.mod.json` and `modules.txt` from the tagged source.
+3. Updates the tag and commit in the Flatpak manifest.
+4. Stops so that you can review the generated changes.
+
+Review and test the update, then commit and push it normally:
+
+```bash
+git diff
+make flatpak-rebuild
+git add io.github.rubiojr.whereami.yml go.mod.json modules.txt
+git commit -m "Update whereami to v0.1.11"
+git push
+```
+
+Publish after the packaging commit has been pushed:
+
+```bash
+./scripts/release publish
+```
+
+The publish command verifies that the worktree is clean and the current commit is on the remote branch. It then performs a fresh Flatpak build, creates or reuses the matching `rubiojr/whereami` GitHub release, uploads the bundle, and publishes the release. Pass the tag explicitly with `./scripts/release publish v0.1.11` if desired; it must match the manifest.
+
+The command refuses to overwrite an asset on an already published release. If replacement is intentional, use `./scripts/release publish --force v0.1.11`.
+
+The equivalent Make targets are `make release-update TAG=v0.1.11` and `make release-publish`.
+
+The release script requires `git` and `go` for updates. Publishing additionally requires `make`, `flatpak`, `flatpak-builder`, and an authenticated `gh` CLI.
 
 ## Prerequisites
 
@@ -70,18 +109,12 @@ The Flatpak build process:
 
 ## Updating Go Dependencies
 
-If you add or update Go dependencies, regenerate the `go.mod.json` and `modules.txt` files:
+The release script regenerates `go.mod.json` and `modules.txt` automatically. To regenerate them manually from a local `whereami` checkout:
 
 ```bash
-# From project root
-go install github.com/dennwc/flatpak-go-mod@latest
-
-# Generate the flatpak sources (this creates both go.mod.json and modules.txt)
-flatpak-go-mod -json -out flatpak
-
-# Or if running from flatpak/ directory:
-cd flatpak
-flatpak-go-mod -json
+# Run from the whereami source checkout and point -out at this repository.
+go run github.com/dennwc/flatpak-go-mod@v0.1.0 \
+  -json -out ../whereami-flatpak .
 ```
 
 **Note**: The `flatpak-go-mod` tool generates two files:

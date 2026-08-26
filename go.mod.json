@@ -13,10 +13,10 @@
   },
   {
     "dest": "vendor/github.com/mappu/miqt",
-    "sha256": "1f4b353fe08d1ccc6fb7f16e727bed25c83c365db6f4724f454245b7a48646e5",
+    "sha256": "4324a3192b941c4d3b1788c9930dc560e3a8ef3d1ede12f586f1ac712d17b320",
     "strip-components": 3,
     "type": "archive",
-    "url": "https://proxy.golang.org/github.com/mappu/miqt/@v/v0.12.0.zip"
+    "url": "https://proxy.golang.org/github.com/mappu/miqt/@v/v0.14.0.zip"
   },
   {
     "dest": "vendor/modernc.org/sqlite",

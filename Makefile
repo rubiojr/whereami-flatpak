@@ -45,12 +45,10 @@ ICON_FILE_DEST    := $(ICON_DIR_SCALABLE)/$(APP_ID).svg
 HOST_OS   := $(shell uname -s)
 HOST_ARCH := $(shell uname -m)
 
-.PHONY: all build run clean lint fmt vet tidy qml-test \
-        flatpak-build flatpak-install flatpak-run flatpak-clean flatpak-rebuild \
-        install uninstall print-vars help \
-        release release-snapshot release-rpm release-rpm-fedora check-release-deps
+.PHONY: all flatpak-build flatpak-bundle flatpak-install flatpak-run \
+        flatpak-clean flatpak-rebuild release-update release-publish
 
-all: flatpak-build flatpak-bundle
+all: flatpak-bundle
 
 ########################################
 # Flatpak targets
@@ -59,12 +57,12 @@ all: flatpak-build flatpak-bundle
 # Build (no install) into $(FLATPAK_BUILDDIR)
 flatpak-build:
 	@echo "==> Flatpak build (no install)"
-	flatpak-builder --ccache $(FLATPAK_BUILDDIR) $(FLATPAK_MANIFEST)
+	flatpak-builder --ccache --force-clean $(FLATPAK_BUILDDIR) $(FLATPAK_MANIFEST)
 
 # Build + install into user repo
 flatpak-install:
 	@echo "==> Flatpak build + install (user)"
-	flatpak-builder --user --install --ccache $(FLATPAK_BUILDDIR) $(FLATPAK_MANIFEST)
+	flatpak-builder --user --install --ccache --force-clean $(FLATPAK_BUILDDIR) $(FLATPAK_MANIFEST)
 
 # Run installed Flatpak
 flatpak-run:
@@ -75,53 +73,30 @@ flatpak-run:
 flatpak-clean:
 	@echo "==> Cleaning Flatpak build dirs"
 	rm -rf $(FLATPAK_BUILDDIR) $(FLATPAK_EXPORTDIR)
+	rm -f $(APP_ID).flatpak
 
-# Clean + build + install (forces fresh build)
+# Clean and create a fresh bundle
 flatpak-rebuild:
 	@echo "==> Cleaning and rebuilding Flatpak"
-	flatpak-builder --user --force-clean --ccache $(FLATPAK_BUILDDIR) $(FLATPAK_MANIFEST)
-	flatpak build-bundle $(FLATPAK_EXPORTDIR) $(APP_ID).flatpak $(APP_ID)
+	$(MAKE) flatpak-clean
+	$(MAKE) flatpak-bundle
 
 # Export and create a distributable .flatpak bundle
 flatpak-bundle:
 	@echo "==> Creating Flatpak bundle"
-	@if [ ! -d "$(FLATPAK_BUILDDIR)" ]; then \
-		echo "Build directory not found. Run 'make flatpak-build' first."; \
-		exit 1; \
-	fi
 	@mkdir -p $(FLATPAK_EXPORTDIR)
-	flatpak-builder --repo=$(FLATPAK_EXPORTDIR) --force-clean $(FLATPAK_BUILDDIR) $(FLATPAK_MANIFEST)
+	flatpak-builder --ccache --repo=$(FLATPAK_EXPORTDIR) --force-clean $(FLATPAK_BUILDDIR) $(FLATPAK_MANIFEST)
 	flatpak build-bundle $(FLATPAK_EXPORTDIR) $(APP_ID).flatpak $(APP_ID)
 	@echo "==> Flatpak bundle created: $(APP_ID).flatpak"
 
-# Upload flatpak bundle to latest GitHub release
-flatpak-release:
-	@echo "==> Uploading Flatpak bundle to latest GitHub release"
-	@if [ ! -f "$(APP_ID).flatpak" ]; then \
-		echo "Error: $(APP_ID).flatpak not found. Run 'make flatpak-bundle' first."; \
+# Update release metadata without committing it.
+release-update:
+	@if [ -z "$(TAG)" ]; then \
+		echo "Error: TAG is required (for example: make release-update TAG=v0.1.11)"; \
 		exit 1; \
 	fi
-	@if ! command -v gh >/dev/null 2>&1; then \
-		echo "Error: gh (GitHub CLI) not found!"; \
-		echo "Install from: https://cli.github.com/"; \
-		exit 1; \
-	fi
-	@echo "Finding latest release..."
-	@LATEST_TAG=$$(gh release list --limit 1 --json tagName --jq '.[0].tagName'); \
-	if [ -z "$$LATEST_TAG" ]; then \
-		echo "Error: No releases found"; \
-		exit 1; \
-	fi; \
-	echo ""; \
-	echo "Release: $$LATEST_TAG"; \
-	echo "File:    $(APP_ID).flatpak"; \
-	echo ""; \
-	read -p "Upload to this release? [y/N] " -n 1 -r; \
-	echo; \
-	if [[ ! $$REPLY =~ ^[Yy]$$ ]]; then \
-		echo "Upload cancelled."; \
-		exit 1; \
-	fi; \
-	echo "Uploading to release $$LATEST_TAG..."; \
-	gh release upload "$$LATEST_TAG" "$(APP_ID).flatpak" --clobber
-	@echo "==> Upload complete!"
+	./scripts/release update "$(TAG)"
+
+# Build and publish the version pinned in the committed manifest.
+release-publish:
+	./scripts/release publish $(if $(TAG),"$(TAG)")
