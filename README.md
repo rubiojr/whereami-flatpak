@@ -61,18 +61,13 @@ The release script requires `git` and `go` for updates. Publishing additionally 
 
 ## Prerequisites
 
-Before building, ensure you have the required dependencies:
+Install `flatpak` and `flatpak-builder` using your system package manager. The Makefile adds a user-scoped Flathub remote and lets `flatpak-builder` install the exact runtime, SDK, and Go extension required by the manifest automatically.
+
+To configure the remote manually:
 
 ```bash
-# Add the Flathub repository if you haven't already
-flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-
-# Install the KDE Platform and SDK (version 6.9)
-flatpak install flathub org.kde.Platform//6.9 org.kde.Sdk//6.9
-
-# The Golang SDK extension should already be available
-# but you can verify with:
-flatpak list | grep golang
+flatpak remote-add --user --if-not-exists flathub \
+  https://flathub.org/repo/flathub.flatpakrepo
 ```
 
 ### Local Development Builds

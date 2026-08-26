@@ -23,6 +23,8 @@ APP_ID            := io.github.rubiojr.whereami
 FLATPAK_MANIFEST  := $(APP_ID).yml
 FLATPAK_BUILDDIR  := build-dir
 FLATPAK_EXPORTDIR := export-dir
+FLATPAK_REMOTE    := flathub
+FLATPAK_REMOTE_URL := https://flathub.org/repo/flathub.flatpakrepo
 BIN_DIR           := bin
 GO                := go
 QML_LINT          := qmllint-qt6
@@ -46,7 +48,7 @@ HOST_OS   := $(shell uname -s)
 HOST_ARCH := $(shell uname -m)
 
 .PHONY: all flatpak-build flatpak-bundle flatpak-install flatpak-run \
-        flatpak-clean flatpak-rebuild release-update release-publish
+        flatpak-clean flatpak-rebuild flatpak-remote release-update release-publish
 
 all: flatpak-bundle
 
@@ -54,15 +56,21 @@ all: flatpak-bundle
 # Flatpak targets
 ########################################
 
+# Use a user-scoped remote so builds never require root to install dependencies.
+flatpak-remote:
+	flatpak remote-add --user --if-not-exists $(FLATPAK_REMOTE) $(FLATPAK_REMOTE_URL)
+
 # Build (no install) into $(FLATPAK_BUILDDIR)
-flatpak-build:
+flatpak-build: flatpak-remote
 	@echo "==> Flatpak build (no install)"
-	flatpak-builder --ccache --force-clean $(FLATPAK_BUILDDIR) $(FLATPAK_MANIFEST)
+	flatpak-builder --user --install-deps-from=$(FLATPAK_REMOTE) --assumeyes \
+		--ccache --force-clean $(FLATPAK_BUILDDIR) $(FLATPAK_MANIFEST)
 
 # Build + install into user repo
-flatpak-install:
+flatpak-install: flatpak-remote
 	@echo "==> Flatpak build + install (user)"
-	flatpak-builder --user --install --ccache --force-clean $(FLATPAK_BUILDDIR) $(FLATPAK_MANIFEST)
+	flatpak-builder --user --install --install-deps-from=$(FLATPAK_REMOTE) --assumeyes \
+		--ccache --force-clean $(FLATPAK_BUILDDIR) $(FLATPAK_MANIFEST)
 
 # Run installed Flatpak
 flatpak-run:
@@ -82,10 +90,11 @@ flatpak-rebuild:
 	$(MAKE) flatpak-bundle
 
 # Export and create a distributable .flatpak bundle
-flatpak-bundle:
+flatpak-bundle: flatpak-remote
 	@echo "==> Creating Flatpak bundle"
 	@mkdir -p $(FLATPAK_EXPORTDIR)
-	flatpak-builder --ccache --repo=$(FLATPAK_EXPORTDIR) --force-clean $(FLATPAK_BUILDDIR) $(FLATPAK_MANIFEST)
+	flatpak-builder --user --install-deps-from=$(FLATPAK_REMOTE) --assumeyes \
+		--ccache --repo=$(FLATPAK_EXPORTDIR) --force-clean $(FLATPAK_BUILDDIR) $(FLATPAK_MANIFEST)
 	flatpak build-bundle $(FLATPAK_EXPORTDIR) $(APP_ID).flatpak $(APP_ID)
 	@echo "==> Flatpak bundle created: $(APP_ID).flatpak"
 
