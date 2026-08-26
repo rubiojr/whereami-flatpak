@@ -61,7 +61,7 @@ The release script requires `git` and `go` for updates. Publishing additionally 
 
 ## Prerequisites
 
-Install `flatpak` and `flatpak-builder` using your system package manager. The Makefile adds a user-scoped Flathub remote and lets `flatpak-builder` install the exact runtime, SDK, and Go extension required by the manifest automatically.
+Install `flatpak` and `flatpak-builder` using your system package manager. Local-source builds also require `jq`. The Makefile adds a user-scoped Flathub remote and lets `flatpak-builder` install the exact runtime, SDK, and Go extension required by the manifest automatically.
 
 To configure the remote manually:
 
@@ -72,24 +72,22 @@ flatpak remote-add --user --if-not-exists flathub \
 
 ### Local Development Builds
 
-The manifest uses a `git` source which fetches from GitHub. For local development with uncommitted changes, you can temporarily change the source to use a local directory:
+Build and install directly from a local `whereami` checkout, including uncommitted changes:
 
-```yaml
-# In io.github.rubiojr.whereami.yml, replace the git source with:
-sources:
-  - type: dir
-    path: ..
-  - type: file
-    path: modules.txt
-  - go.mod.json
+```bash
+./scripts/build ../whereami
+flatpak run --user io.github.rubiojr.whereami
 ```
 
-**Important**: Don't commit this change! The `type: git` source is required for distribution (e.g., Flathub).
+The script creates a temporary manifest which replaces the pinned Git source with the local checkout, builds into `build-local`, and installs the result in the user Flatpak installation. It does not modify the release manifest.
+
+Local builds reuse this repository's `go.mod.json` and `modules.txt`. Regenerate them first if the local checkout changes Go dependencies.
 
 ## Files in this Directory
 
 - **`io.github.rubiojr.whereami.yml`** - The Flatpak manifest that defines how to build the application
 - **`go.mod.json`** - Pre-generated Go module sources for offline building (no network access needed during build)
+- **`scripts/build`** - Build and user-install from a local `whereami` checkout
 - **`README.md`** - This file
 
 ## How It Works

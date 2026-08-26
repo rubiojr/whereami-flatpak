@@ -1,4 +1,6 @@
 /.flatpak-builder
 /build-dir
+/build-local
 /export-dir
 /io.github.rubiojr.whereami.flatpak
+/.octmp
