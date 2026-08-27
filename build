@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly APP_ID="io.github.rubiojr.whereami"
+readonly BUNDLE="${APP_ID}.flatpak"
+readonly MANIFEST="${APP_ID}.yml"
+readonly FLATPAK_GO_MOD_VERSION="v0.1.0"
+readonly FLATPAK_REMOTE="flathub"
+readonly FLATPAK_REMOTE_URL="https://flathub.org/repo/flathub.flatpakrepo"
+
+usage() {
+    cat <<EOF
+Usage:
+  ./build dev [SOURCE_DIR]
+  ./build release TAG [SOURCE_DIR]
+
+Both modes create ${BUNDLE}.
+
+dev      Builds the current local source, including uncommitted changes.
+release  Requires a clean source tree with TAG checked out at HEAD and builds
+         that exact tag. It does not upload or publish anything.
+
+SOURCE_DIR defaults to the parent directory.
+EOF
+}
+
+die() {
+    printf 'error: %s\n' "$*" >&2
+    exit 1
+}
+
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+}
+
+work_dir=""
+local_manifest=""
+cleanup() {
+    [[ -z "$local_manifest" ]] || rm -f "$local_manifest"
+    [[ -z "$work_dir" ]] || rm -rf "$work_dir"
+}
+trap cleanup EXIT
+
+mode="${1:-}"
+case "$mode" in
+    dev)
+        [[ $# -le 2 ]] || { usage >&2; exit 2; }
+        source_arg="${2:-..}"
+        tag=""
+        commit=""
+        ;;
+    release)
+        [[ $# -ge 2 && $# -le 3 ]] || { usage >&2; exit 2; }
+        tag="$2"
+        source_arg="${3:-..}"
+        ;;
+    -h|--help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac
+
+require_command flatpak
+require_command flatpak-builder
+require_command git
+require_command go
+require_command jq
+require_command tar
+
+[[ -d "$source_arg" ]] || die "source directory does not exist: $source_arg"
+source_dir=$(cd "$source_arg" && pwd -P)
+[[ -f "${source_dir}/go.mod" ]] || die "source directory does not contain go.mod: $source_dir"
+
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+cd "$repo_root"
+
+work_dir=$(mktemp -d "${repo_root}/.build-work.XXXXXX")
+generation_source="${work_dir}/source"
+generation_output="${work_dir}/dependencies"
+mkdir "$generation_source" "$generation_output"
+
+if [[ "$mode" == "release" ]]; then
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || \
+        die "tag must be a semantic version beginning with v, for example v0.1.12"
+    [[ -z $(git -C "$source_dir" status --porcelain --untracked-files=all) ]] || \
+        die "release source tree must be clean"
+    commit=$(git -C "$source_dir" rev-parse --verify "${tag}^{commit}" 2>/dev/null) || \
+        die "tag not found in source repository: $tag"
+    [[ "$commit" == "$(git -C "$source_dir" rev-parse HEAD)" ]] || \
+        die "release tag $tag is not checked out at HEAD"
+    git -C "$source_dir" archive "$commit" | tar -C "$generation_source" -xf -
+else
+    # Include uncommitted source while excluding generated and host-only state.
+    tar -C "$source_dir" \
+        --exclude='./.git' \
+        --exclude='./.flatpak-builder' \
+        --exclude='./.octmp' \
+        --exclude='./bin' \
+        --exclude='./build-dir' \
+        --exclude='./dist' \
+        --exclude='./export-dir' \
+        --exclude='./resources_gen.go' \
+        --exclude='./resources_gen.rcc' \
+        --exclude='./vendor' \
+        --exclude='./web' \
+        --exclude='./whereami' \
+        --exclude='./whereami-flatpak' \
+        -cf - . | tar -C "$generation_source" -xf -
+fi
+
+printf '==> Generating Go dependency sources\n'
+(
+    cd "$generation_source"
+    GOFLAGS=-mod=mod go run "github.com/dennwc/flatpak-go-mod@${FLATPAK_GO_MOD_VERSION}" \
+        -json -out "$generation_output" .
+)
+
+dependencies_rel=${generation_output#"${repo_root}/"}
+modules_path="${dependencies_rel}/modules.txt"
+local_manifest=$(mktemp "${repo_root}/.build-manifest.XXXXXX.json")
+
+flatpak-builder --show-manifest "$MANIFEST" | jq \
+    --arg mode "$mode" \
+    --arg source "$source_dir" \
+    --arg tag "$tag" \
+    --arg commit "$commit" \
+    --arg modules "$modules_path" \
+    --slurpfile dependencies "${generation_output}/go.mod.json" '
+    ($dependencies[0] | map(
+        if .type == "file" and .path == "modules.txt" then
+            .path = $modules
+        else
+            .
+        end
+    )) as $go_sources |
+    (if $mode == "dev" then
+        {
+            "type": "dir",
+            "path": $source,
+            "skip": [
+                ".git", ".flatpak-builder", ".octmp", "bin", "build-dir",
+                "dist", "export-dir", "resources_gen.go", "resources_gen.rcc",
+                "vendor", "web", "whereami", "whereami-flatpak"
+            ]
+        }
+    else
+        {"type": "git", "path": $source, "tag": $tag, "commit": $commit}
+    end) as $app_source |
+    (.modules[] | select(.name == "whereami") | .sources) = ([$app_source] + $go_sources)
+' >"$local_manifest"
+
+printf '==> Building %s bundle\n' "$mode"
+flatpak remote-add --user --if-not-exists "$FLATPAK_REMOTE" "$FLATPAK_REMOTE_URL"
+mkdir -p export-dir
+rm -f "$BUNDLE"
+flatpak-builder --user --install-deps-from="$FLATPAK_REMOTE" --assumeyes \
+    --ccache --repo=export-dir --force-clean build-dir "$local_manifest"
+flatpak build-bundle export-dir "$BUNDLE" "$APP_ID"
+[[ -f "$BUNDLE" ]] || die "flatpak did not create $BUNDLE"
+
+printf '==> Bundle created: %s/%s\n' "$repo_root" "$BUNDLE"

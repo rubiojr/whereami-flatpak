@@ -1,176 +1,76 @@
-# Building whereami as a Flatpak
+# WhereAmI Flatpak
 
-This directory contains the Flatpak manifest and related files for building [whereami](https://github.com/rubiojr/whereami) as a Flatpak application.
+This repository has one entry point. Both modes create:
 
-## Quick Start
-
-The easiest way to build and install the Flatpak is using the Makefile targets:
-
-```bash
-# Build and install the Flatpak (user installation)
-make flatpak-install
-
-# Run the installed Flatpak
-make flatpak-run
-
-# Clean build artifacts
-make flatpak-clean
-
-# Rebuild from scratch
-make flatpak-rebuild
+```text
+io.github.rubiojr.whereami.flatpak
 ```
 
-## Releasing a Tagged Version
+## Development
 
-After pushing a `whereami` tag, update this repository with that exact tag:
+Build the local WhereAmI checkout, including uncommitted changes:
 
 ```bash
-./scripts/release update v0.1.11
+./build dev ../whereami
 ```
 
-The update command:
-
-1. Checks out the tag from `rubiojr/whereami` and resolves its commit.
-2. Regenerates `go.mod.json` and `modules.txt` from the tagged source.
-3. Updates the tag and commit in the Flatpak manifest.
-4. Stops so that you can review the generated changes.
-
-Review and test the update, then commit and push it normally:
+The source directory defaults to `..`, so this is equivalent when the Flatpak
+repository is nested inside the WhereAmI checkout:
 
 ```bash
-git diff
-make flatpak-rebuild
-git add io.github.rubiojr.whereami.yml go.mod.json modules.txt
-git commit -m "Update whereami to v0.1.11"
-git push
+./build dev
 ```
 
-Publish after the packaging commit has been pushed:
+Test the bundle:
 
 ```bash
-./scripts/release publish
-```
-
-The publish command verifies that the worktree is clean and the current commit is on the remote branch. It then performs a fresh Flatpak build, creates or reuses the matching `rubiojr/whereami` GitHub release, uploads the bundle, and publishes the release. Pass the tag explicitly with `./scripts/release publish v0.1.11` if desired; it must match the manifest.
-
-The command refuses to overwrite an asset on an already published release. If replacement is intentional, use `./scripts/release publish --force v0.1.11`.
-
-The equivalent Make targets are `make release-update TAG=v0.1.11` and `make release-publish`.
-
-The release script requires `git` and `go` for updates. Publishing additionally requires `make`, `flatpak`, `flatpak-builder`, and an authenticated `gh` CLI.
-
-## Prerequisites
-
-Install `flatpak` and `flatpak-builder` using your system package manager. Local-source builds also require `jq`. The Makefile adds a user-scoped Flathub remote and lets `flatpak-builder` install the exact runtime, SDK, and Go extension required by the manifest automatically.
-
-To configure the remote manually:
-
-```bash
-flatpak remote-add --user --if-not-exists flathub \
-  https://flathub.org/repo/flathub.flatpakrepo
-```
-
-### Local Development Builds
-
-Build and install directly from a local `whereami` checkout, including uncommitted changes:
-
-```bash
-./scripts/build ../whereami
+flatpak install --user --reinstall io.github.rubiojr.whereami.flatpak
 flatpak run --user io.github.rubiojr.whereami
 ```
 
-The script creates a temporary manifest which replaces the pinned Git source with the local checkout, builds into `build-local`, and installs the result in the user Flatpak installation. It does not modify the release manifest.
+## Release
 
-Local builds reuse this repository's `go.mod.json` and `modules.txt`. Regenerate them first if the local checkout changes Go dependencies.
-
-## Files in this Directory
-
-- **`io.github.rubiojr.whereami.yml`** - The Flatpak manifest that defines how to build the application
-- **`go.mod.json`** - Pre-generated Go module sources for offline building (no network access needed during build)
-- **`scripts/build`** - Build and user-install from a local `whereami` checkout
-- **`README.md`** - This file
-
-## How It Works
-
-The Flatpak build process:
-
-1. **Downloads Go modules offline** - The `go.mod.json` file contains pre-downloaded URLs for all Go dependencies, so the build doesn't require network access during compilation
-2. **Builds `miqt-rcc`** - First builds the Qt resource compiler tool needed for QML resources
-3. **Generates resources** - Runs `go generate` to compile QML files into the binary
-4. **Builds the application** - Compiles the Go application with vendored dependencies
-5. **Installs desktop integration** - Installs the `.desktop` file and application icon
-
-## Updating Go Dependencies
-
-The release script regenerates `go.mod.json` and `modules.txt` automatically. To regenerate them manually from a local `whereami` checkout:
+After tagging WhereAmI, build that exact tag from a clean checkout:
 
 ```bash
-# Run from the whereami source checkout and point -out at this repository.
-go run github.com/dennwc/flatpak-go-mod@v0.1.0 \
-  -json -out ../whereami-flatpak .
+./build release v0.1.12 ../whereami
 ```
 
-**Note**: The `flatpak-go-mod` tool generates two files:
-- `go.mod.json` - Archive sources for all Go dependencies
-- `modules.txt` - The Go vendor modules list
+Release mode refuses to build when:
 
-Both files must be regenerated together whenever dependencies change.
+- the WhereAmI checkout is dirty;
+- the tag does not exist; or
+- the tag is not checked out at `HEAD`.
 
-## Permissions
+Test the resulting bundle with the same `flatpak install --reinstall` command.
+Uploading it to GitHub Releases is a separate manual step after validation.
 
-The Flatpak has the following permissions:
+## Build Behavior
 
-- **Graphics**: Wayland and X11 (fallback) support
-- **Network**: Required for downloading map tiles
-- **Location services**: Access to GeoClue2 for device location
-- **Filesystem**: Can create/write to `~/Documents/whereami/` for bookmarks
+`./build` regenerates Flatpak Go dependency sources from the selected checkout
+before invoking flatpak-builder. Development mode uses the dirty local source;
+release mode uses the exact tagged Git source. Generated dependency metadata is
+temporary and never modifies either checkout.
 
-These are defined in the `finish-args` section of the manifest.
+MapLibre Native Qt is built inside the Flatpak against the pinned KDE/Qt
+runtime. Its commit is pinned in `maplibre-native-qt.yml` because its QtLocation
+plugin links Qt private APIs.
 
-## Troubleshooting
+Requirements: `flatpak`, `flatpak-builder`, `git`, Go, `jq`, and `tar`.
 
-**"Can't find ref..." error**
-- Ensure you have installed the correct KDE Platform/SDK version (6.9)
-- Run: `flatpak list | grep org.kde`
+## Licensing
 
-**Build failures with "rcc not found"**
-- This should be handled automatically by the manifest
-- The Qt `rcc` tool is in `/usr/libexec/rcc` within the KDE SDK
+The packaging files are MIT licensed; see `LICENSE`. The bundle also includes:
 
-**Permission denied on rofiles-fuse**
-- Clean up stale mount points: `flatpak-builder --force-clean build-dir io.github.rubiojr.whereami.yml`
-- Or use the make target: `make flatpak-clean && make flatpak-install`
+| Component | License |
+| --- | --- |
+| WhereAmI | MIT |
+| MapLibre Native Qt core | BSD-2-Clause |
+| MapLibre Native Qt Location | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only |
+| Vendored MapLibre dependencies | See bundled upstream notices |
 
-**Go module download errors**
-- The build should work offline using `go.mod.json`
-- If you see download errors, the `go.mod.json` may be outdated - regenerate it
-
-## Development Workflow
-
-When developing and testing Flatpak changes:
-
-```bash
-# 1. Make changes to source code or manifest
-# 2. Rebuild and install
-make flatpak-rebuild
-
-# 3. Test the application
-make flatpak-run
-
-# 4. Check logs if needed
-flatpak run --command=sh io.github.rubiojr.whereami
-```
-
-## Uninstalling
-
-To remove the installed Flatpak:
-
-```bash
-flatpak uninstall --user io.github.rubiojr.whereami
-```
-
-To also remove build artifacts:
-
-```bash
-make flatpak-clean
-```
+WhereAmI distributes the MapLibre Location component under LGPL-3.0-only. The
+exact MapLibre source commit and build configuration are recorded in
+`maplibre-native-qt.yml`, and the libraries are dynamically linked. Upstream
+license texts and notices are installed under
+`/app/share/licenses/io.github.rubiojr.whereami/`.

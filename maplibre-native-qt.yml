@@ -1,0 +1,42 @@
+# MapLibre Native Qt provides the QtLocation "maplibre" geoservice used to render
+# the OpenFreeMap vector basemap.
+#
+# The plugin links Qt private APIs, so it must be built against the exact Qt
+# version shipped by the runtime declared in the application manifest. Never
+# substitute a prebuilt upstream artifact.
+#
+# The commit below is pinned deliberately: MapLibre Native Qt 4.0.0 is
+# unreleased and under active development.
+name: maplibre-native-qt
+buildsystem: simple
+build-commands:
+  - >-
+    cmake -S . -B build -G Ninja
+    -DCMAKE_BUILD_TYPE=Release
+    -DBUILD_TESTING=OFF
+    -DMLN_QT_WITH_LOCATION=ON
+    -DMLN_QT_WITH_QUICK_PLUGIN=OFF
+    -DMLN_QT_WITH_WIDGETS=OFF
+    -DMLN_QT_WITH_INTERNAL_ICU=ON
+    -DMLN_QT_WITH_INTERNAL_SQLITE=OFF
+    -DMLN_WITH_OPENGL=ON
+    -DMLN_WITH_VULKAN=OFF
+    -DMLN_WITH_GLFW=OFF
+  - cmake --build build --target qtgeoservices_maplibre
+  - install -Dm755 build/src/core/libQMapLibre.so.4.0.0 /app/lib/libQMapLibre.so.4.0.0
+  - ln -s libQMapLibre.so.4.0.0 /app/lib/libQMapLibre.so.4
+  - install -Dm755 build/src/quick/libQMapLibreQuickPrivate.so.4.0.0 /app/lib/libQMapLibreQuickPrivate.so.4.0.0
+  - ln -s libQMapLibreQuickPrivate.so.4.0.0 /app/lib/libQMapLibreQuickPrivate.so.4
+  - install -Dm755 build/src/location/libQMapLibreLocation.so.4.0.0 /app/lib/libQMapLibreLocation.so.4.0.0
+  - ln -s libQMapLibreLocation.so.4.0.0 /app/lib/libQMapLibreLocation.so.4
+  # /app/lib/plugins is already on QT_PLUGIN_PATH in the KDE 6.8+ runtimes.
+  - install -Dm755 build/src/location/plugins/geoservices/libqtgeoservices_maplibre.so /app/lib/plugins/geoservices/libqtgeoservices_maplibre.so
+  # Ship every upstream license text plus the generated notices for the
+  # statically linked vendored dependencies.
+  - install -Dm644 LICENSES/*.txt -t /app/share/licenses/io.github.rubiojr.whereami/maplibre-native-qt
+  - install -Dm644 README.md /app/share/licenses/io.github.rubiojr.whereami/maplibre-native-qt/README.md
+  - install -Dm644 vendor/maplibre-native/LICENSE.md vendor/maplibre-native/LICENSES.core.md -t /app/share/licenses/io.github.rubiojr.whereami/maplibre-native
+sources:
+  - type: git
+    url: https://github.com/maplibre/maplibre-native-qt.git
+    commit: c924d8f4723c51eee9fd3dadad0ac3df53441c2c

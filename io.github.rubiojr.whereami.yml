@@ -12,7 +12,7 @@ finish-args:
   - --share=ipc
   - --device=dri
 
-  # Network access for map tiles
+  # Network access for the OpenFreeMap vector basemap and geocoding
   - --share=network
 
   # Access to location services
@@ -35,14 +35,15 @@ build-options:
     GOPATH: /run/build/whereami/gopath
 
 modules:
+  - maplibre-native-qt.yml
   - name: whereami
     buildsystem: simple
     build-commands:
-      - mkdir -p vendor && cp modules.txt vendor/modules.txt
       - . /usr/lib/sdk/golang/enable.sh && cd vendor/github.com/mappu/miqt/cmd/miqt-rcc && go build -v -mod=vendor -o /app/bin/miqt-rcc .
       - . /usr/lib/sdk/golang/enable.sh && go generate
       - . /usr/lib/sdk/golang/enable.sh && go build -v -mod=vendor -ldflags '-s -w' -o whereami .
       - install -Dm755 whereami /app/bin/whereami
+      - install -Dm644 LICENSE /app/share/licenses/io.github.rubiojr.whereami/LICENSE
       - install -Dm644 desktop/io.github.rubiojr.whereami.desktop /app/share/applications/io.github.rubiojr.whereami.desktop
       - install -Dm644 ui/icons/hicolor/128x128/apps/io.github.rubiojr.whereami.png /app/share/icons/hicolor/128x128/apps/io.github.rubiojr.whereami.png
       - install -Dm644 ui/icons/hicolor/256x256/apps/io.github.rubiojr.whereami.png /app/share/icons/hicolor/256x256/apps/io.github.rubiojr.whereami.png
@@ -54,11 +55,5 @@ modules:
       - install -Dm644 ui/icons/hicolor/64x64@2/apps/io.github.rubiojr.whereami.png /app/share/icons/hicolor/64x64@2/apps/io.github.rubiojr.whereami.png
       - install -Dm644 ui/icons/hicolor/128x128@2/apps/io.github.rubiojr.whereami.png /app/share/icons/hicolor/128x128@2/apps/io.github.rubiojr.whereami.png
       - install -Dm644 ui/icons/hicolor/256x256@2/apps/io.github.rubiojr.whereami.png /app/share/icons/hicolor/256x256@2/apps/io.github.rubiojr.whereami.png
-    sources:
-      - type: git
-        url: https://github.com/rubiojr/whereami.git
-        tag: v0.1.11
-        commit: f3306a57416ef7e4da2b3aa29295aee9314cd6dc
-      - type: file
-        path: modules.txt
-      - go.mod.json
+    # Populated by ./build for either a dirty local tree or an exact Git tag.
+    sources: []
