@@ -28,6 +28,8 @@ flatpak install --user --reinstall io.github.rubiojr.whereami.flatpak
 flatpak run --user io.github.rubiojr.whereami
 ```
 
+The bundle points Flatpak at Flathub for its KDE runtime dependency.
+
 ## Release
 
 After tagging WhereAmI, build that exact tag from a clean checkout:
@@ -47,16 +49,30 @@ Uploading it to GitHub Releases is a separate manual step after validation.
 
 ## Build Behavior
 
-`./build` regenerates Flatpak Go dependency sources from the selected checkout
-before invoking flatpak-builder. Development mode uses the dirty local source;
-release mode uses the exact tagged Git source. Generated dependency metadata is
-temporary and never modifies either checkout.
+`./build` runs the complete build in a disposable Fedora 44 Podman container.
+The packaging and application checkouts are mounted read-only, and only the
+finished bundle is copied back to the packaging checkout. The container
+regenerates Flatpak Go dependency sources before invoking flatpak-builder.
+Development mode uses the dirty local source; release mode uses the exact tagged
+Git source. Generated dependency metadata is temporary and never modifies
+either checkout.
+
+Development builds reuse the Podman volume
+`whereami-flatpak-f44-kde69-$HOSTTYPE` for Flatpak runtimes, downloaded Go
+modules, flatpak-builder state, and ccache. Release builds do not mount this
+volume and always use disposable build state. Remove the development cache with:
+
+```bash
+podman volume rm "whereami-flatpak-f44-kde69-$HOSTTYPE"
+```
 
 MapLibre Native Qt is built inside the Flatpak against the pinned KDE/Qt
 runtime. Its commit is pinned in `maplibre-native-qt.yml` because its QtLocation
 plugin links Qt private APIs.
 
-Requirements: `flatpak`, `flatpak-builder`, `git`, Go, `jq`, and `tar`.
+Requirement: rootless Podman. The container installs all build dependencies
+itself and needs network access to Fedora, Flathub, GitHub, and the Go module
+proxy.
 
 ## Licensing
 

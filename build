@@ -8,6 +8,9 @@ readonly MANIFEST="${APP_ID}.yml"
 readonly FLATPAK_GO_MOD_VERSION="v0.1.0"
 readonly FLATPAK_REMOTE="flathub"
 readonly FLATPAK_REMOTE_URL="https://flathub.org/repo/flathub.flatpakrepo"
+readonly FLATPAK_RUNTIME_REPO="https://dl.flathub.org/repo/flathub.flatpakrepo"
+readonly CONTAINER_IMAGE="docker.io/library/fedora:44"
+readonly DEV_CACHE_VOLUME="whereami-flatpak-f44-kde69-${HOSTTYPE:-unknown}"
 
 usage() {
     cat <<EOF
@@ -65,13 +68,6 @@ case "$mode" in
         ;;
 esac
 
-require_command flatpak
-require_command flatpak-builder
-require_command git
-require_command go
-require_command jq
-require_command tar
-
 [[ -d "$source_arg" ]] || die "source directory does not exist: $source_arg"
 source_dir=$(cd "$source_arg" && pwd -P)
 [[ -f "${source_dir}/go.mod" ]] || die "source directory does not contain go.mod: $source_dir"
@@ -79,7 +75,62 @@ source_dir=$(cd "$source_arg" && pwd -P)
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$repo_root"
 
-work_dir=$(mktemp -d "${repo_root}/.build-work.XXXXXX")
+if [[ -z "${WHEREAMI_FLATPAK_IN_CONTAINER:-}" ]]; then
+    require_command podman
+    [[ $(podman info --format '{{.Host.Security.Rootless}}') == "true" ]] || \
+        die "the build requires rootless Podman"
+
+    output_dir=$(mktemp -d "${TMPDIR:-/tmp}/whereami-flatpak.XXXXXX")
+    trap 'rm -rf "$output_dir"' EXIT
+
+    container_args=(
+        run --rm --privileged --security-opt label=disable
+        --workdir /work
+        --mount "type=bind,src=${repo_root},dst=/packaging,ro=true"
+        --mount "type=bind,src=${source_dir},dst=/source,ro=true"
+        --mount "type=bind,src=${output_dir},dst=/output"
+        --env WHEREAMI_FLATPAK_IN_CONTAINER=1
+        --env WHEREAMI_FLATPAK_BUILD_ROOT=/work
+        --env WHEREAMI_FLATPAK_OUTPUT_DIR=/output
+        --env HOME=/work/home
+        --env XDG_CACHE_HOME=/work/xdg/cache
+        --env XDG_CONFIG_HOME=/work/xdg/config
+        --env XDG_DATA_HOME=/work/xdg/data
+        --env GOMODCACHE=/work/go/pkg/mod
+        --env GOCACHE=/work/go/cache
+        --env CCACHE_DIR=/work/ccache
+    )
+    if [[ "$mode" == "dev" ]]; then
+        container_args+=(--mount "type=volume,src=${DEV_CACHE_VOLUME},dst=/work")
+        printf '==> Using development cache volume %s\n' "$DEV_CACHE_VOLUME"
+    fi
+
+    printf '==> Building in %s container\n' "$CONTAINER_IMAGE"
+    podman "${container_args[@]}" \
+        "$CONTAINER_IMAGE" \
+        bash -c 'dnf install -y flatpak flatpak-builder git golang jq tar && exec /packaging/build "$@"' \
+        bash "$mode" ${tag:+"$tag"} /source
+
+    [[ -f "${output_dir}/${BUNDLE}" ]] || die "container did not create $BUNDLE"
+    rm -f "$BUNDLE"
+    mv "${output_dir}/${BUNDLE}" "$BUNDLE"
+    printf '==> Bundle created: %s/%s\n' "$repo_root" "$BUNDLE"
+    exit 0
+fi
+
+require_command flatpak
+require_command flatpak-builder
+require_command git
+require_command go
+require_command jq
+require_command tar
+
+build_root="${WHEREAMI_FLATPAK_BUILD_ROOT:-$repo_root}"
+output_dir="${WHEREAMI_FLATPAK_OUTPUT_DIR:-$repo_root}"
+mkdir -p "$build_root" "$output_dir"
+cd "$build_root"
+
+work_dir=$(mktemp -d "${build_root}/.build-work.XXXXXX")
 generation_source="${work_dir}/source"
 generation_output="${work_dir}/dependencies"
 mkdir "$generation_source" "$generation_output"
@@ -120,11 +171,10 @@ printf '==> Generating Go dependency sources\n'
         -json -out "$generation_output" .
 )
 
-dependencies_rel=${generation_output#"${repo_root}/"}
-modules_path="${dependencies_rel}/modules.txt"
-local_manifest=$(mktemp "${repo_root}/.build-manifest.XXXXXX.json")
+modules_path="${generation_output}/modules.txt"
+local_manifest=$(mktemp "${build_root}/.build-manifest.XXXXXX.json")
 
-flatpak-builder --show-manifest "$MANIFEST" | jq \
+flatpak-builder --show-manifest "${repo_root}/${MANIFEST}" | jq \
     --arg mode "$mode" \
     --arg source "$source_dir" \
     --arg tag "$tag" \
@@ -156,11 +206,26 @@ flatpak-builder --show-manifest "$MANIFEST" | jq \
 
 printf '==> Building %s bundle\n' "$mode"
 flatpak remote-add --user --if-not-exists "$FLATPAK_REMOTE" "$FLATPAK_REMOTE_URL"
-mkdir -p export-dir
-rm -f "$BUNDLE"
-flatpak-builder --user --install-deps-from="$FLATPAK_REMOTE" --assumeyes \
-    --ccache --repo=export-dir --force-clean build-dir "$local_manifest"
-flatpak build-bundle export-dir "$BUNDLE" "$APP_ID"
-[[ -f "$BUNDLE" ]] || die "flatpak did not create $BUNDLE"
+build_dir="${build_root}/build-dir"
+export_dir="${build_root}/export-dir"
+state_dir="${build_root}/.flatpak-builder"
+mkdir -p "$export_dir"
+rm -f "${output_dir}/${BUNDLE}"
+builder_args=(
+    --user
+    "--install-deps-from=${FLATPAK_REMOTE}"
+    --assumeyes
+    --disable-rofiles-fuse
+    "--state-dir=${state_dir}"
+    "--repo=${export_dir}"
+    --force-clean
+)
+if [[ "$mode" == "dev" ]]; then
+    builder_args+=(--ccache)
+fi
+flatpak-builder "${builder_args[@]}" "$build_dir" "$local_manifest"
+flatpak build-bundle --runtime-repo="$FLATPAK_RUNTIME_REPO" \
+    "$export_dir" "${output_dir}/${BUNDLE}" "$APP_ID"
+[[ -f "${output_dir}/${BUNDLE}" ]] || die "flatpak did not create $BUNDLE"
 
-printf '==> Bundle created: %s/%s\n' "$repo_root" "$BUNDLE"
+printf '==> Container bundle created: %s/%s\n' "$output_dir" "$BUNDLE"

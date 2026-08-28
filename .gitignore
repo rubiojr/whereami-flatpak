@@ -2,5 +2,6 @@
 /build-dir
 /export-dir
 /io.github.rubiojr.whereami.flatpak
+/io.github.rubiojr.whereami.flatpak.sha256
 /.build-manifest.*.json
 /.build-work.*/

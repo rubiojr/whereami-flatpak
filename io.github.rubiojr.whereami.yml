@@ -45,6 +45,7 @@ modules:
       - install -Dm755 whereami /app/bin/whereami
       - install -Dm644 LICENSE /app/share/licenses/io.github.rubiojr.whereami/LICENSE
       - install -Dm644 desktop/io.github.rubiojr.whereami.desktop /app/share/applications/io.github.rubiojr.whereami.desktop
+      - install -Dm644 desktop/io.github.rubiojr.whereami.metainfo.xml /app/share/metainfo/io.github.rubiojr.whereami.metainfo.xml
       - install -Dm644 ui/icons/hicolor/128x128/apps/io.github.rubiojr.whereami.png /app/share/icons/hicolor/128x128/apps/io.github.rubiojr.whereami.png
       - install -Dm644 ui/icons/hicolor/256x256/apps/io.github.rubiojr.whereami.png /app/share/icons/hicolor/256x256/apps/io.github.rubiojr.whereami.png
       - install -Dm644 ui/icons/hicolor/512x512/apps/io.github.rubiojr.whereami.png /app/share/icons/hicolor/512x512/apps/io.github.rubiojr.whereami.png
